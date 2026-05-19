@@ -61,16 +61,13 @@ Each skill is also usable on its own:
 .
 ├── README.md
 ├── LICENSE
-├── skills/
-│   ├── hypothesis-verificator/
-│   │   └── SKILL.md
-│   ├── project-pivot/
-│   │   └── SKILL.md
-│   └── architecture-proposal/
-│       └── SKILL.md
-└── examples/
-    ├── n87-pivot-architecture-proposal.html
-    └── n87-pivot-architecture-proposal.md
+└── skills/
+    ├── hypothesis-verificator/
+    │   └── SKILL.md
+    ├── project-pivot/
+    │   └── SKILL.md
+    └── architecture-proposal/
+        └── SKILL.md
 ```
 
 The folder name (e.g. `hypothesis-verificator/`) is the skill identifier; `SKILL.md` is the fixed filename Claude Code looks for inside each folder.
@@ -80,10 +77,6 @@ The folder name (e.g. `hypothesis-verificator/`) is the skill identifier; `SKILL
 For Claude Code: copy a skill folder into your project's skills directory (or into `~/.claude/skills/` for personal use). The skill becomes available the next time Claude reads its skill index.
 
 For other tooling: read the `SKILL.md` files directly. They are written as standalone procedural documents and remain useful as methodology guides outside any specific tool.
-
-## Examples
-
-`examples/n87-pivot-architecture-proposal.html` is a worked example of an `architecture-proposal` output — the design document for a research-software pivot from a (fictional) gray-box J-A-C surrogate that hit a model-class limit, to an operator-extension approach. Open it in any browser. It demonstrates the depth, structure, and styling the skill produces at the `full` calibration level.
 
 ## Design principles common to all three skills
 
