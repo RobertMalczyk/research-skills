@@ -38,24 +38,24 @@ Use when: you have a chosen direction and want a design review before implementa
 The canonical cycle:
 
 ```
-layered-research
-       │
-       │ ranked hypotheses, primary candidate,
-       │ position paper, experiments list
-       ▼
-hypothesis-verificator
-       │
-       │ verdicts: confirmed / falsified / inconclusive
-       │ findings on what works and what doesn't
-       ▼
-   ┌───────────────┴───────────────┐
-   │                               │
-[answer found]              [approach killed]
-   │                               │
-   │                               ▼
-   │                       project-pivot
-   │                               │
-   │                               │ (Step 8.5 invokes architecture-proposal)
+layered-research ─────────────────────────────┐
+       │                                       │
+       │ ranked hypotheses, primary candidate, │ (can also challenge an
+       │ position paper, experiments list      │  already-approved
+       ▼                                       │  architecture-proposal —
+hypothesis-verificator                         │  see Step 9.5)
+       │                                       │
+       │ verdicts: confirmed / falsified /     │
+       │ inconclusive; findings on what works  │
+       ▼                                       │
+   ┌───────────────┴───────────────┐           │
+   │                               │           │
+[answer found]              [approach killed]  │
+   │                               │           │
+   │                               ▼           │
+   │                       project-pivot       │
+   │                               │           │
+   │                               │ (Step 8.5 invokes architecture-proposal) ◄┘
    │                               │
    │                               │ approved HTML proposal in docs/
    │                               ▼
@@ -69,7 +69,7 @@ hypothesis-verificator
              or project complete)
 ```
 
-Four skills, one cycle. `project-pivot` will not write any files until `architecture-proposal` has produced an explicitly approved design document — enforced at three levels in the skill: operating principle, mandatory step, and Step 9 precondition check. `layered-research` produces deliverables that feed directly into `hypothesis-verificator` for validation.
+Four skills, one cycle. `project-pivot` will not write any files until `architecture-proposal` has produced an explicitly approved design document — enforced at three levels in the skill: operating principle, mandatory step, and Step 9 precondition check. `layered-research` produces deliverables that feed directly into `hypothesis-verificator` for validation; it can also run *after* an architecture-proposal and surface findings that challenge it (Step 9.5), gating implementation on a cheap decisive experiment before expensive commitments.
 
 ## Standalone use
 
