@@ -63,7 +63,9 @@ layers:
     convergence_check:
       new_hypotheses_in_layer: <count>
       novel_hypotheses_in_layer: <count>        # novelty: partial or fully_novel
-      convergence_reached: <bool>               # true if zero genuinely novel
+      fully_novel_hypotheses_in_layer: <count>  # novelty: fully_novel only
+      convergence_reached: <bool>               # see "Convergence definition" below
+      convergence_reason: <one sentence — required when convergence_reached is true>
     user_audit:
       reviewed: <bool>
       reviewed_at: <datetime>
@@ -256,7 +258,14 @@ For *every* new hypothesis at this layer:
 
 If any validated analogies exist from Step 4, allow them to seed hypotheses at this layer. Validated analogies' predictions become candidate hypotheses with `derivation_move: analogy_transfer` and the analogy id as a parent.
 
-Convergence check: if this layer produces zero hypotheses graded `partial` or `fully_novel`, the skill has converged — no new ground is being broken. Flag this in `convergence_check.convergence_reached: true`.
+Convergence check (precise definition). The run has *converged* at the current layer when **both** of the following hold:
+
+1. **No `fully_novel` hypothesis was generated in this layer.** No new ground broken in the strict sense.
+2. **No `partial`-graded hypothesis generated in this layer materially changes the primary candidate or its falsifier.** Refinements that sharpen prior claims do not count as breaking new ground; novel results that would reorder the ranking, or change which hypothesis is primary, do.
+
+If both hold, set `convergence_check.convergence_reached: true` and record one sentence in `convergence_reason` explaining which test was decisive. If either fails, the run has not converged — the layer added meaningfully to the result.
+
+This definition distinguishes *deepening* (adding partial refinements that strengthen the existing answer) from *converging* (the procedure has stopped producing decision-relevant novelty). A run can deepen for several layers without converging; conversely, a layer that adds no `fully_novel` results but does shift the primary candidate has not converged.
 
 Increment layer counter, return to Step 4 (analogy search for the next transition) and then Step 5 (audit) for this newly generated layer.
 
@@ -266,9 +275,11 @@ After Step 5's audit, ask the user: "Is any current hypothesis ready to pursue n
 
 Three possible responses:
 
-- **No, continue.** Default. Proceed to Step 6 (generate next layer). The branched_decisions log records the decision and rationale.
+- **No, continue.** Default. Proceed to Step 6 (generate next layer).
 - **Yes, branch — and continue layered work.** User identifies a hypothesis to send into `hypothesis-verificator`. The skill writes the branch reference in the hypothesis (`status: branched`, `branch.target_register`, `branch.branched_at`), initializes a verificator register for it, and continues the layered work in this session. When the verificator branch later completes (in the same session, a later session, or months later), its findings are written back to `hypothesis.branch.branch_result`.
 - **Yes, branch — and halt.** User wants to focus on the branched hypothesis. Skill records branch as above, sets `procedure_state.status = paused`, and terminates with full deliverables (Step 9) reflecting the state at halt.
+
+**Logging requirement.** Every branch question and its answer get a `branch_decisions` entry, every time, including the most common `continue` case. The audit trail must show that the user was asked at each layer transition and what they answered. Skipping log entries for "no" answers is a procedure failure — without the entries, a later reviewer cannot distinguish "asked and declined" from "never asked."
 
 Default behavior is to continue. The user halts only by explicit choice.
 
@@ -285,7 +296,7 @@ When any condition is met, write to register the termination reason and proceed 
 
 ### Step 9 — Deliverables
 
-Three artifacts produced at termination:
+Three artifacts produced at termination. The procedure below tightens each one's content requirements based on first-run review: the data needed already lives in the register, but the deliverables must surface it explicitly rather than compress it away.
 
 **1. Ranked hypothesis list.** Order all `open` hypotheses by:
 1. Novelty grade (`fully_novel` > `partial` > `none`).
@@ -294,20 +305,64 @@ Three artifacts produced at termination:
 
 Write to `deliverables.ranked_hypotheses` and surface to the user.
 
-**2. Primary candidate.** Ask the user to designate one hypothesis as the primary candidate to take into validation. The skill recommends one (typically the top of the ranked list, but with reasoning about why this specific one over its neighbors); the user accepts or overrides.
+**2. Primary candidate.** Ask the user to designate one hypothesis as the primary candidate to take into validation. The skill recommends one and the user accepts or overrides. The recommendation's `rationale` field is not free-form prose — it must contain, explicitly:
+
+- **Why this one** — what makes this the right primary, on which axis.
+- **Comparison against the next two ranked hypotheses** — name them by ID, state what they offer that the primary doesn't, and state why the primary still wins. "It's at the top of the list" is not a comparison. The two-neighbor comparison forces the recommendation to be defensible against the most plausible alternatives.
+- **Why not a higher-novelty / lower-confidence candidate** — if a fully_novel / low_confidence hypothesis ranked below the primary, state explicitly why the primary's grade combination is preferred for the decision the user needs to make.
 
 Write to `deliverables.primary_candidate`.
 
 **3. Position paper + experiments list.** Generate two markdown documents in `docs/`:
 
-- `position_paper.md` — a synthesis of the layered work. Sections: problem framing, what the literature covers (Layer 1), what the layered synthesis revealed (Layers 2+), the novel hypotheses and their provenance, the primary candidate and rationale, open questions. Length scales with layer depth: 2-4 pages for a 3-layer run, 5-10 pages for a 5-layer run.
-- `experiments.md` — concrete validation experiments for the primary candidate, formatted as input to `hypothesis-verificator`. For each experiment: hypothesis under test, predicted observation, falsification criterion, estimated effort, dependencies.
+- `position_paper.md` — a synthesis of the layered work. Required sections, in order:
+  - *Problem framing* — quoted from `problem.statement`, not paraphrased.
+  - *Method summary* — layers run, groundedness setting, budget consumed, convergence verdict with `convergence_reason`.
+  - *Layer 1 — literature baseline* — what the field offers, with citations.
+  - *Layers 2+ — synthesis* — for each layer: what was generated, how it derived from the previous layer (`derivation_move`), what was confirmed or falsified by literature search at this layer.
+  - *Analogies* — for each analogy used: source domain, source phenomenon, **structural correspondences laid out element-by-element**, predictions if valid, validation status. Analogies must be visible as first-class objects, not summarized as "led to" the next layer.
+  - *Novel hypotheses and their provenance* — for each `fully_novel` and top-ranked `partial` hypothesis: the derivation chain back to grounded roots, the `confidence_reason`, the `literature_pass.searches_run` queries, the `attested_in` citations and `near_misses`. A reader must be able to audit the novelty grade.
+  - *Primary candidate and rationale* — including the two-neighbor comparison from §2 above.
+  - *Branch decisions log* — every branch question and its answer, every layer. Even the `continue` cases. Shows the audit trail.
+  - *Honest limits* — what the run did and did not do. Searches consumed vs budget. Empirical work not yet done.
+
+  Length scales with layer depth: 3-5 pages for a 3-layer run, 6-12 pages for a 5-layer run.
+
+- `experiments.md` — concrete validation experiments for the primary candidate, formatted as input to `hypothesis-verificator`. For each experiment:
+  - Hypothesis under test (by ID).
+  - Predicted observation.
+  - **Falsification criterion — numerically specific.** "S3 fits as well as the unified population" is not a falsifier. "S3's residual on test loops is within 1 percentage point rel L2 of the unified model's AND shows no systematic dependence on amplitude × frequency" is. Two researchers reading the falsifier must not be able to disagree about whether it triggered. If the natural framing does not admit a numerical criterion, state the qualitative criterion AND state explicitly that quantification is deferred — do not pretend a vague criterion is precise.
+  - Data required and access status (have / need to acquire / unobtainable).
+  - Estimated effort.
+  - Dependencies on other experiments.
 
 Write paths to `deliverables.position_paper_path` and `deliverables.experiments_list_path`.
+
+**HTML rendering (optional).** If the user wants an HTML view of the position paper, render it as a single self-contained HTML file in `docs/`, following the technical-editorial styling from the `architecture-proposal` skill (calm, dense, print-friendly). The rendered HTML must surface the same content as the markdown — not a compressed summary. Specifically:
+- `literature_pass` queries and citations visible (an appendix or expandable details is fine).
+- `confidence_reason` shown for the primary candidate and top 3 ranked.
+- Analogy structural correspondences shown element-by-element.
+- `branch_decisions` log shown.
+- Falsifier criteria numerically rendered in the experiments table.
+
+If the HTML compresses any of these away, the rendering is wrong — fix the template, not the data.
 
 Set `procedure_state.status = complete`. Use `present_files` to surface the position paper and experiments list to the user.
 
 The handoff is now ready. The user (or Claude in a new session) invokes `hypothesis-verificator` with `experiments.md` as input; verificator records `branched_from: <this register path>` and writes its findings back to the relevant hypothesis entries on completion.
+
+### Step 9.5 — Interaction with an approved architecture-proposal
+
+A case not anticipated by the original chain but surfaced by first-run experience: `layered-research` can produce a finding that *challenges* an already-approved `architecture-proposal`. The challenge takes the form of a primary candidate whose validation experiment would, if it confirms the candidate, contradict a structural commitment of the approved architecture.
+
+When this occurs, the deliverables in Step 9 must include an explicit note:
+
+- **Affected architecture-proposal** — path to the approved proposal, version, and the specific commitment under challenge.
+- **The challenge** — one paragraph stating which assumption of the architecture this run questions, and why.
+- **Gate experiment** — which experiment in `experiments.md` is the cheap decisive test.
+- **Recommendation** — proceed-with-architecture-and-defer-experiment, or hold-architecture-implementation-and-run-experiment-first. Default recommendation is the second when the experiment cost is small relative to architecture implementation cost.
+
+This does not automatically reopen the architecture proposal — that requires the user to decide. But it does require the layered-research output to surface the challenge clearly enough that the user cannot accidentally proceed with the architecture while the gate experiment is unresolved.
 
 ## Failure modes to resist
 
@@ -320,6 +375,9 @@ The handoff is now ready. The user (or Claude in a new session) invokes `hypothe
 - **Folding under user pushback regardless of evidence.** If the user disagrees with a grade, record the disagreement and resolve by what the literature contains, not by capitulation. Symmetric: if Claude disagrees with the user's domain reading, record and resolve by evidence, not by stubbornness.
 - **Auto-refreshing stale searches without asking.** Auto-refresh silently invalidates prior work. Surface staleness, let the user decide.
 - **Branch references that don't survive.** When a hypothesis is branched into verificator, the cross-reference must be written to disk at branch time, not deferred. Otherwise a session crash between branch and write loses the link.
+- **Compressing the audit trail in deliverables.** The register contains literature queries, citation lists, confidence reasoning, analogy structural mappings, and branch decisions. If the position paper and HTML report compress these away, the deliverables are no longer auditable — the reader has to trust the grades instead of checking them. The skill's contribution evaporates. Surface the audit data in the deliverables; use appendices or expandable sections if length is a concern, but do not omit.
+- **Vague falsifiers passing as precise.** "Model A fits as well as Model B" is not a falsifier — it is a comparison without a threshold. Every experiment must have either a numerical criterion or an explicit acknowledgment that quantification is deferred. Pretending a vague criterion is precise is worse than admitting imprecision.
+- **Treating layered-research as upstream-only.** The skill can run *after* an architecture-proposal and challenge it. When this happens, Step 9.5's handling is mandatory — the user must not accidentally proceed with the challenged architecture while the gate experiment is unresolved.
 
 ## Turn-level output contract
 
